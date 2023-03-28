@@ -1,0 +1,70 @@
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
+import android.os.Bundle;
+import android.os.Handler;
+import android.support.v7.app.AppCompatActivity;
+import android.widget.TextView;
+
+import com.github.pires.obd.commands.SpeedCommand;
+import com.github.pires.obd.commands.engine.RPMCommand;
+import com.github.pires.obd.enums.ObdProtocols;
+import com.github.pires.obd.exceptions.UnableToConnectException;
+import com.github.pires.obd.exceptions.UnsupportedCommandException;
+import com.github.pires.obd.reader.config.ObdConfig;
+import com.github.pires.obd.reader.io.ObdCommandJob;
+import com.github.pires.obd.reader.io.ObdGatewayService;
+import com.github.pires.obd.reader.io.ObdProgressListener;
+import com.github.pires.obd.reader.net.ObdReading;
+
+import java.io.IOException;
+import java.util.UUID;
+
+public class MainActivity extends AppCompatActivity implements ObdProgressListener {
+
+    private static final String DEVICE_ADDRESS = "00:1D:A5:00:0A:00"; // Replace with your device's MAC address
+    private static final UUID DEVICE_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"); // Standard SPP UUID
+
+    private TextView rpmView, speedView;
+
+    private ObdGatewayService obdGatewayService;
+    private Handler handler;
+    private Runnable runnable;
+    private BluetoothAdapter bluetoothAdapter;
+    private BluetoothSocket bluetoothSocket;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        rpmView = findViewById(R.id.rpm);
+        speedView = findViewById(R.id.speed);
+
+        obdGatewayService = new ObdGatewayService();
+        obdGatewayService.setConfig(new ObdConfig());
+
+        handler = new Handler();
+        runnable = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Connect to the ELM327 device over Bluetooth
+                    BluetoothDevice device = bluetoothAdapter.getRemoteDevice(DEVICE_ADDRESS);
+                    bluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(DEVICE_UUID);
+                    bluetoothSocket.connect();
+
+                    // Create a list of OBD commands to execute
+                    SpeedCommand speedCommand = new SpeedCommand();
+                    RPMCommand rpmCommand = new RPMCommand();
+
+                    // Execute the OBD commands and update the UI with the results
+                    ObdCommandJob speedJob = new ObdCommandJob(speedCommand);
+                    obdGatewayService.queueJob(speedJob);
+                    ObdReading speedReading = speedJob.getObdReading();
+                    speedView.setText(String.format("Speed: %s", speedReading.getFormattedResult()));
+
+                    ObdCommandJob rpmJob = new ObdCommandJob(rpmCommand);
+                    obdGatewayService.queueJob(rpmJob);
+                    ObdReading rpmReading = rpmJob.getObdReading();
+                    rpmView.setText(String.format("
