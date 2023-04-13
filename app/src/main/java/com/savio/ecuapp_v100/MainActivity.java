@@ -13,6 +13,7 @@ import android.bluetooth.BluetoothSocket;
 import android.content.DialogInterface;
 
 import android.content.pm.PackageManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
 
 import android.os.Handler;
@@ -32,19 +33,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import com.github.pires.obd.commands.SpeedCommand;
-import com.github.pires.obd.commands.engine.RPMCommand;
-import com.github.pires.obd.enums.ObdProtocols;
-import com.github.pires.obd.exceptions.UnableToConnectException;
-import com.github.pires.obd.exceptions.UnsupportedCommandException;
-//import com.github.pires.obd.reader.config.ObdConfig;
-//import com.github.pires.obd.reader.io.ObdCommandJob;
-//import com.github.pires.obd.reader.io.ObdGatewayService;
-//import com.github.pires.obd.reader.io.ObdProgressListener;
-//import com.github.pires.obd.reader.net.ObdReading;
-
-//ELM327 v 2.1 ?
-public class MainActivity extends AppCompatActivity{
+//ELM327 v 1.5!
+public class MainActivity extends AppCompatActivity {
     static String[] appPermissions = {
             Manifest.permission.BLUETOOTH,
             Manifest.permission.BLUETOOTH_ADMIN,
@@ -56,7 +46,7 @@ public class MainActivity extends AppCompatActivity{
     public static final int PERMISSION_REQUEST_CODE = 1;
     final ArrayList devices = new ArrayList();
     ArrayList deviceStrs = new ArrayList();
-    private TextView statusBluetoothTv, pairTv;
+    private TextView statusBluetoothTv, pairTv, rpmTv, tempTv;
     Button sendCommandBtn, pairedBtn;
     EditText commandEt;
     BluetoothAdapter bluetoothAdapter;
@@ -65,8 +55,8 @@ public class MainActivity extends AppCompatActivity{
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-//      Solicita permissões para acessar e conectar bluetooth caso ainda não foram cedidas
 
+//      Solicita permissões para acessar e conectar bluetooth caso ainda não estejam cedidas
         if (checkPermissions()) {
 //
         } else {
@@ -75,15 +65,18 @@ public class MainActivity extends AppCompatActivity{
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         statusBluetoothTv = findViewById(R.id.statusBluetoothTv);
         pairTv = findViewById(R.id.pairTv);
+        rpmTv = findViewById(R.id.rpmTv);
+        tempTv = findViewById(R.id.tempTv);
         pairedBtn = findViewById(R.id.pairedBtn);
         sendCommandBtn = findViewById(R.id.sendBtn);
         commandEt = findViewById(R.id.commandEt);
 
         startInterfaceBluetooth();
         sendCommandBtn.setEnabled(false);
+        rpmTv.setText("?");
+        tempTv.setText("?");
 
 //      Ao clicar no botão GET PAIRED, mostrar a lista de dispositivos pareados e conetar no escolhido
         pairedBtn.setOnClickListener(new View.OnClickListener() {
@@ -114,7 +107,7 @@ public class MainActivity extends AppCompatActivity{
             }
         });
     }
-
+//------------------------função que verifica se as permissões foram concedidas. Se não, solicita ao usuário----------------------
     public boolean checkPermissions() {
         List<String> requiredPermissions = new ArrayList<>();
         for (String permission : appPermissions) {
@@ -144,9 +137,8 @@ public class MainActivity extends AppCompatActivity{
                 int position = ((AlertDialog) dialog).getListView().getCheckedItemPosition();
                 deviceHardwareAddress = devices.get(position);
                 pairTv.append(deviceHardwareAddress.toString());
-//                pairTv.setText(deviceHardwareAddress.toString());
 
-//              Conect at choosed device from list
+//-------------------------Conectar ao dispositivo escolhido da lista-------------------
                 connectChoosedDevice();
             }
         });
@@ -162,29 +154,12 @@ public class MainActivity extends AppCompatActivity{
             socket.connect();
             showToast("Device connected!");
             sendCommandBtn.setEnabled(true);
+            pairedBtn.setEnabled(false);
+
         } catch (Exception e) {
             showToast("Error at connect a device");
             return;
         }
-
-//        try {
-//            // Envia o comando AT para o dispositivo ELM327
-//            OutputStream outputStream = socket.getOutputStream();
-//            outputStream.write("AT\r".getBytes());
-//
-//            // Lê a resposta do dispositivo ELM327
-//            InputStream inputStream = socket.getInputStream();
-//            byte[] buffer = new byte[1024];
-//            int bytes = inputStream.read(buffer);
-//            String response = new String(buffer, 0, bytes);
-//            showToast("Response: " + response);
-//
-//            outputStream.close();
-//            inputStream.close();
-//
-//        } catch (Exception e) {
-//            showToast("Error at stablish comunication with remote device");
-//        }
     }
 
     private void startInterfaceBluetooth() {
@@ -195,68 +170,70 @@ public class MainActivity extends AppCompatActivity{
             statusBluetoothTv.setText("Bluetooth available");
         }
     }
+//    ----------------comando para leitura de RPM---------------------
 
-    public void getRPM(OutputStream outputStream, InputStream inputStream) {
+    public void getRPM() {
         try {
-            outputStream.write("01 0C\r".getBytes());
-            byte[] buffer = new byte[1024];
-            int bytes = inputStream.read(buffer);
-            String response = new String(buffer, 0, bytes);
-            Toast.makeText(this, "RPM: " + response, Toast.LENGTH_LONG).show();
+            OutputStream outputStream = socket.getOutputStream();
+            InputStream inputStream = socket.getInputStream();
+            outputStream.write("01 0C".getBytes()); //set auto protocol
+
+
+                byte[] buffer = new byte[1024];
+                int bytes = inputStream.read(buffer);
+                TimeUnit.SECONDS.sleep(1);
+                String response = new String(buffer, 0, bytes);
+                rpmTv.setText(response);
+
 
         } catch (Exception e) {
             showToast("Failed to read RPM command!");
         }
     }
 
-    @SuppressLint("MissingPermission")
+    //    ----------------comando para leitura de temperatura---------------------
+
+    public void getTemp() {
+        try {
+            OutputStream outputStream = socket.getOutputStream();
+            InputStream inputStream = socket.getInputStream();
+            outputStream.write("01 0C\r".getBytes());
+            byte[] buffer = new byte[1024];
+            int bytes = inputStream.read(buffer);
+            TimeUnit.SECONDS.sleep(1);
+            String response = new String(buffer, 0, bytes);
+            tempTv.setText(response);
+
+        } catch (Exception e) {
+            showToast("Failed to read temperature command!");
+        }
+    }
+
+    //    ----------------função para envio de comandos ---------------------
     public void sendCommand(String command) {
-//        if (!socket.isConnected()) {
-//            try {
-//                BluetoothDevice elm327 = bluetoothAdapter.getRemoteDevice(deviceHardwareAddress.toString());
-//                socket = elm327.createRfcommSocketToServiceRecord(MY_UUID);
-//                socket.connect();
-//            } catch (IOException e) {
-//                showToast("canot connect again");
-//            }
-//        }
+
         try {
             OutputStream outputStream = socket.getOutputStream();
             outputStream.write(command.getBytes());
-            TimeUnit.SECONDS.sleep(1);
             InputStream inputStream = socket.getInputStream();
             byte[] buffer = new byte[1024];
             int bytes = inputStream.read(buffer);
+            TimeUnit.SECONDS.sleep(1);
             String response = new String(buffer, 0, bytes);
             pairTv.setText(response);
-
-//            outputStream.close();
-//            inputStream.close();
+            getRPM();
+            getTemp();
 
         } catch (IOException e) {
-            showToast("canot connect to module");
+            showToast("can`not connect to module");
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
     }
 
-
     private void showToast(String msg) {
         Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
     }
 
-//    private class ObdService extends Thread{
-//
-//    }
 }
 
-
-//    private void getDiagnostics(){
-//        new EchoOffObdCommand().run(socket.getInputStream(), socket.getOutputStream());
-//
-//        new LineFeedOffObdCommand().run(socket.getInputStream(), socket.getOutputStream());
-//
-//        new TimeoutObdCommand().run(socket.getInputStream(), socket.getOutputStream());
-//
-//        new SelectProtocolObdCommand(ObdProtocols.AUTO).run(socket.getInputStream(), socket.getOutputStream());
-//    }
